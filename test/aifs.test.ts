@@ -33,6 +33,7 @@ function baseOptions(overrides: Partial<AionisAifsOptions> = {}): AionisAifsOpti
     context_mode: "compact_agent",
     budget_profile: "balanced",
     include_base_prompt: false,
+    agent_instruction: true,
     snapshot: true,
     output_format: "summary",
     cwd: process.cwd(),
@@ -197,6 +198,7 @@ test("@aionis/aifs parses refresh args and env defaults", () => {
     "reviewer",
     "--budget-profile",
     "compact",
+    "--no-agent-instruction",
     "--no-snapshot",
   ], {
     AIONIS_TENANT_ID: "tenant-a",
@@ -210,6 +212,7 @@ test("@aionis/aifs parses refresh args and env defaults", () => {
   assert.equal(options.task_signature, "checkout");
   assert.equal(options.role, "reviewer");
   assert.equal(options.budget_profile, "compact");
+  assert.equal(options.agent_instruction, false);
   assert.equal(options.snapshot, false);
   assert.equal(options.output_format, "summary");
   assert.equal(options.cwd, "/tmp/project");
@@ -223,6 +226,7 @@ test("@aionis/aifs parses init, doctor, and json output", () => {
   const doctorOptions = parseAionisAifsArgs(["doctor", "--json"], {}, "/tmp/project");
   assert.equal(doctorOptions.command, "doctor");
   assert.equal(doctorOptions.output_format, "json");
+  assert.equal(doctorOptions.agent_instruction, true);
 });
 
 test("@aionis/aifs builds governed file mirror from execution guide", async () => {
@@ -239,6 +243,7 @@ test("@aionis/aifs builds governed file mirror from execution guide", async () =
   assert.equal(calls.some((call) => call.startsWith("snapshot:")), true);
   assert.deepEqual(built.result.files, [
     "README.md",
+    "AGENT_INSTRUCTIONS.md",
     "guide.md",
     "current_active_path.md",
     "inspect_before_use.md",
@@ -256,11 +261,15 @@ test("@aionis/aifs builds governed file mirror from execution guide", async () =
   });
 
   const guide = built.files.find((file) => file.relativePath === "guide.md")?.content ?? "";
+  const instructions = built.files.find((file) => file.relativePath === "AGENT_INSTRUCTIONS.md")?.content ?? "";
   const current = built.files.find((file) => file.relativePath === "current_active_path.md")?.content ?? "";
   const blocked = built.files.find((file) => file.relativePath === "do_not_use.md")?.content ?? "";
   const rehydrate = built.files.find((file) => file.relativePath === "rehydrate_needed.md")?.content ?? "";
 
   assert.match(guide, /AIONIS_EXECUTION_AGENT_CONTEXT v1/);
+  assert.match(instructions, /Aionis Agent Instructions/);
+  assert.match(instructions, /current_active_path\.md/);
+  assert.match(instructions, /do_not_use\.md/);
   assert.match(current, /src\/checkoutAdapter\.ts/);
   assert.match(blocked, /mem-failed/);
   assert.match(blocked, /src\/fullBundleEnvironment\.ts/);
@@ -272,10 +281,12 @@ test("@aionis/aifs initializes local file surface", () => {
   const result = initAifsMirror(baseOptions({ cwd: dir, outDir: ".aionis", scope: "scope-a" }));
 
   assert.equal(result.out_dir, path.join(dir, ".aionis"));
-  assert.deepEqual(result.files, ["README.md", "config.json"]);
+  assert.deepEqual(result.files, ["README.md", "AGENT_INSTRUCTIONS.md", "config.json"]);
   assert.equal(fs.existsSync(path.join(dir, ".aionis", "README.md")), true);
+  assert.equal(fs.existsSync(path.join(dir, ".aionis", "AGENT_INSTRUCTIONS.md")), true);
   assert.equal(fs.existsSync(path.join(dir, ".aionis", "config.json")), true);
   assert.match(fs.readFileSync(path.join(dir, ".aionis", "README.md"), "utf8"), /Configured scope: `scope-a`/);
+  assert.match(fs.readFileSync(path.join(dir, ".aionis", "AGENT_INSTRUCTIONS.md"), "utf8"), /not refreshed yet/);
   assert.match(formatInitSummary(result), /Aionis AIFS initialized/);
 });
 
@@ -329,6 +340,7 @@ test("@aionis/aifs writes .aionis mirror files", async () => {
   });
 
   assert.equal(result.out_dir, path.join(dir, ".aionis"));
+  assert.equal(fs.existsSync(path.join(dir, ".aionis", "AGENT_INSTRUCTIONS.md")), true);
   assert.equal(fs.existsSync(path.join(dir, ".aionis", "guide.md")), true);
   assert.equal(fs.existsSync(path.join(dir, ".aionis", "receipts", "latest.json")), true);
   assert.equal(fs.existsSync(path.join(dir, ".aionis", "snapshots", "latest.json")), true);

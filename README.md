@@ -9,6 +9,10 @@ Aionis context with normal file operations.
 It is intentionally not a FUSE/NFS mount. Phase 1 is a static, read-only mirror
 over the existing Aionis Runtime APIs.
 
+The first file an agent should read is `.aionis/AGENT_INSTRUCTIONS.md`. It tells
+the agent which Aionis files are authoritative for the current turn, which files
+are blocked, and when to rehydrate compact evidence.
+
 ```bash
 npx @aionis/aifs@latest init --scope my-project
 npx @aionis/aifs@latest doctor --scope my-project
@@ -39,6 +43,7 @@ Output:
 ```text
 .aionis/
   README.md
+  AGENT_INSTRUCTIONS.md
   guide.md
   current_active_path.md
   inspect_before_use.md
@@ -49,8 +54,17 @@ Output:
   snapshots/latest.json
 ```
 
-Agents should read `.aionis/guide.md` first, then inspect the focused files when
-they need a narrower surface.
+Agents should read `.aionis/AGENT_INSTRUCTIONS.md` first, then inspect the
+focused files when they need a narrower surface.
+
+For hosts that need a single instruction to paste into an agent prompt:
+
+```text
+Before continuing, read .aionis/AGENT_INSTRUCTIONS.md and follow the Aionis file-surface order.
+Use .aionis/current_active_path.md as the active route.
+Treat .aionis/do_not_use.md as blocked memory.
+Rehydrate pointers in .aionis/rehydrate_needed.md before exact edits.
+```
 
 Environment variables:
 
@@ -75,6 +89,7 @@ Useful options:
 | `--budget-profile <compact|balanced|high_recall>` | SDK execution prompt budget profile. Defaults to `balanced`. |
 | `--max-prompt-chars <n>` | Maximum generated `guide.md` size. |
 | `--include-base-prompt` / `--no-include-base-prompt` | Include or omit Runtime `agent_context.prompt_text` under the contract renderer. |
+| `--agent-instruction` / `--no-agent-instruction` | Write or omit `.aionis/AGENT_INSTRUCTIONS.md`. Enabled by default. |
 
 Refresh summary:
 

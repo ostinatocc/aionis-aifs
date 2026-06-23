@@ -38,6 +38,7 @@ export type AionisAifsOptions = {
   budget_profile: AionisExecutionContextBudgetProfile;
   max_prompt_chars?: number;
   include_base_prompt: boolean;
+  agent_instruction: boolean;
   snapshot: boolean;
   output_format: AionisAifsOutputFormat;
   cwd: string;
@@ -162,6 +163,8 @@ Options:
   --max-prompt-chars <n>        Maximum guide.md chars.
   --include-base-prompt         Include Runtime base prompt under the AIFS execution contract.
   --no-include-base-prompt      Omit Runtime base prompt. Default.
+  --agent-instruction           Write AGENT_INSTRUCTIONS.md for file-reading agents. Default.
+  --no-agent-instruction        Omit AGENT_INSTRUCTIONS.md.
   --snapshot                    Fetch operator snapshot when possible. Default when --run-id is provided.
   --no-snapshot                 Do not fetch operator snapshot.
   --json                        Print machine-readable JSON instead of a human summary.
@@ -216,6 +219,7 @@ export function parseAionisAifsArgs(
     ? optionalPositiveInteger(env.AIONIS_AIFS_MAX_PROMPT_CHARS.trim(), "AIONIS_AIFS_MAX_PROMPT_CHARS")
     : undefined;
   let includeBasePrompt = env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "1" || env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "true";
+  let agentInstruction = env.AIONIS_AIFS_AGENT_INSTRUCTION !== "0" && env.AIONIS_AIFS_AGENT_INSTRUCTION !== "false";
   let snapshot = env.AIONIS_AIFS_SNAPSHOT === "1" || env.AIONIS_AIFS_SNAPSHOT === "true";
   let snapshotSet = env.AIONIS_AIFS_SNAPSHOT !== undefined;
   let outputFormat: AionisAifsOutputFormat = env.AIONIS_AIFS_JSON === "1" || env.AIONIS_AIFS_JSON === "true" ? "json" : "summary";
@@ -324,6 +328,14 @@ export function parseAionisAifsArgs(
       includeBasePrompt = false;
       continue;
     }
+    if (arg === "--agent-instruction") {
+      agentInstruction = true;
+      continue;
+    }
+    if (arg === "--no-agent-instruction") {
+      agentInstruction = false;
+      continue;
+    }
     if (arg === "--snapshot") {
       snapshot = true;
       snapshotSet = true;
@@ -364,6 +376,7 @@ export function parseAionisAifsArgs(
     budget_profile: budgetProfile,
     max_prompt_chars: maxPromptChars,
     include_base_prompt: includeBasePrompt,
+    agent_instruction: agentInstruction,
     snapshot,
     output_format: outputFormat,
     cwd,
@@ -419,11 +432,12 @@ function readmeMarkdown(generatedAt: string): string {
     "",
     "Read order for agents:",
     "",
-    "1. `guide.md` - the governed execution-memory contract for the current task.",
-    "2. `current_active_path.md` - active route, pending artifacts, and should-continue instructions.",
-    "3. `do_not_use.md` - blocked, failed, stale, retired, or must-not-use memory surfaces.",
-    "4. `inspect_before_use.md` - memory that may be useful but must be checked before action.",
-    "5. `rehydrate_needed.md` - compact memory pointers that need raw evidence before exact use.",
+    "1. `AGENT_INSTRUCTIONS.md` - the direct instruction for file-reading agents.",
+    "2. `guide.md` - the governed execution-memory contract for the current task.",
+    "3. `current_active_path.md` - active route, pending artifacts, and should-continue instructions.",
+    "4. `do_not_use.md` - blocked, failed, stale, retired, or must-not-use memory surfaces.",
+    "5. `inspect_before_use.md` - memory that may be useful but must be checked before action.",
+    "6. `rehydrate_needed.md` - compact memory pointers that need raw evidence before exact use.",
     "",
     "Machine-readable records:",
     "",
@@ -452,15 +466,59 @@ function initReadmeMarkdown(scope: string | undefined): string {
     "",
     "Then ask your agent to read:",
     "",
-    "1. `.aionis/README.md`",
-    "2. `.aionis/guide.md`",
-    "3. `.aionis/current_active_path.md`",
-    "4. `.aionis/do_not_use.md`",
-    "5. `.aionis/rehydrate_needed.md`",
+    "1. `.aionis/AGENT_INSTRUCTIONS.md`",
+    "2. `.aionis/README.md`",
+    "3. `.aionis/guide.md`",
+    "4. `.aionis/current_active_path.md`",
+    "5. `.aionis/do_not_use.md`",
+    "6. `.aionis/rehydrate_needed.md`",
     "",
     "The Runtime remains the source of truth. These files are a generated read surface.",
     "",
     scope ? `Configured scope: \`${scope}\`` : "Configured scope: not set yet",
+    "",
+  ].join("\n");
+}
+
+function agentInstructionMarkdown(input: {
+  generatedAt: string;
+  options: AionisAifsOptions;
+  guideTraceId?: string | null;
+  promptCharCount?: number;
+  initializedOnly?: boolean;
+}): string {
+  const scopeLine = input.options.scope ? `- Scope: ${input.options.scope}` : "- Scope: not set";
+  const traceLine = input.guideTraceId ? `- Guide trace: ${input.guideTraceId}` : "- Guide trace: not generated yet";
+  const promptLine = input.promptCharCount !== undefined ? `- Prompt chars: ${input.promptCharCount}` : "- Prompt chars: not generated yet";
+  return [
+    "# Aionis Agent Instructions",
+    "",
+    "This workspace contains an Aionis file surface. Before continuing the task, read the governed context files in this order:",
+    "",
+    "1. `.aionis/guide.md` - use this as the compact Aionis context contract.",
+    "2. `.aionis/current_active_path.md` - continue the accepted route and pending artifacts.",
+    "3. `.aionis/do_not_use.md` - do not use these memories as implementation direction.",
+    "4. `.aionis/inspect_before_use.md` - inspect these only as candidates before relying on them.",
+    "5. `.aionis/rehydrate_needed.md` - expand these pointers before exact edits or claims.",
+    "",
+    "Rules for the agent:",
+    "",
+    "- Prefer `current_active_path.md` over older matching files or notes.",
+    "- If an active target is missing, treat it as pending work rather than falling back to a blocked route.",
+    "- Never turn `do_not_use.md` entries into direct implementation steps.",
+    "- If `rehydrate_needed.md` contains required evidence, request or fetch that evidence before making exact changes.",
+    "- Use `receipts/latest.json` when you need to explain which memory was used or suppressed.",
+    "",
+    input.initializedOnly
+      ? "The mirror has been initialized but not refreshed yet. Run `npx @aionis/aifs@latest refresh` before relying on Aionis context."
+      : "The mirror has been refreshed from the Aionis Runtime.",
+    "",
+    "Metadata:",
+    "",
+    `- Generated at: ${input.generatedAt}`,
+    scopeLine,
+    traceLine,
+    promptLine,
     "",
   ].join("\n");
 }
@@ -645,6 +703,17 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
 
   const coreFiles: AionisAifsFile[] = [
     { relativePath: "README.md", content: readmeMarkdown(generatedAt) },
+    ...(options.agent_instruction
+      ? [{
+        relativePath: "AGENT_INSTRUCTIONS.md",
+        content: agentInstructionMarkdown({
+          generatedAt,
+          options,
+          guideTraceId,
+          promptCharCount: executionContext.prompt_char_count,
+        }),
+      }]
+      : []),
     { relativePath: "guide.md", content: `${executionContext.agent_prompt}\n` },
     { relativePath: "current_active_path.md", content: currentActivePath },
     {
@@ -721,8 +790,19 @@ export async function refreshAifsMirror(input: AionisAifsRefreshInput): Promise<
 }
 
 export function initAifsMirror(options: AionisAifsOptions): AionisAifsInitResult {
+  const generatedAt = new Date().toISOString();
   const files: AionisAifsFile[] = [
     { relativePath: "README.md", content: initReadmeMarkdown(options.scope) },
+    ...(options.agent_instruction
+      ? [{
+        relativePath: "AGENT_INSTRUCTIONS.md",
+        content: agentInstructionMarkdown({
+          generatedAt,
+          options,
+          initializedOnly: true,
+        }),
+      }]
+      : []),
     { relativePath: "config.json", content: json(initConfig(options)) },
   ];
   writeAifsFiles(options.outDir, files, options.cwd);
@@ -762,6 +842,7 @@ export async function doctorAifsMirror(input: AionisAifsRefreshInput): Promise<A
   if (fs.existsSync(root)) {
     const required = [
       "README.md",
+      ...(options.agent_instruction ? ["AGENT_INSTRUCTIONS.md"] : []),
       "guide.md",
       "current_active_path.md",
       "inspect_before_use.md",
@@ -841,11 +922,12 @@ export function formatRefreshSummary(result: AionisAifsRefreshResult): string {
     ...result.files.map((file) => `- ${file}`),
     "",
     "Agent read order:",
-    "1. .aionis/README.md",
-    "2. .aionis/guide.md",
-    "3. .aionis/current_active_path.md",
-    "4. .aionis/do_not_use.md",
-    "5. .aionis/rehydrate_needed.md",
+    "1. .aionis/AGENT_INSTRUCTIONS.md",
+    "2. .aionis/README.md",
+    "3. .aionis/guide.md",
+    "4. .aionis/current_active_path.md",
+    "5. .aionis/do_not_use.md",
+    "6. .aionis/rehydrate_needed.md",
     "",
   ].join("\n");
 }
