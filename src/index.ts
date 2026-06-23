@@ -879,10 +879,17 @@ async function main(): Promise<void> {
   process.stdout.write(options.output_format === "json" ? json(result) : formatRefreshSummary(result));
 }
 
-function isCliEntrypoint(): boolean {
-  const entry = process.argv[1];
+function realpathForEntrypoint(input: string): string {
+  try {
+    return fs.realpathSync(input);
+  } catch {
+    return path.resolve(input);
+  }
+}
+
+export function isCliEntrypoint(entry = process.argv[1], moduleUrl = import.meta.url): boolean {
   if (!entry) return false;
-  return path.resolve(entry) === fileURLToPath(import.meta.url);
+  return realpathForEntrypoint(entry) === realpathForEntrypoint(fileURLToPath(moduleUrl));
 }
 
 if (isCliEntrypoint()) {

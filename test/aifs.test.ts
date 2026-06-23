@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   buildAifsFiles,
   doctorAifsMirror,
@@ -10,6 +11,7 @@ import {
   formatInitSummary,
   formatRefreshSummary,
   initAifsMirror,
+  isCliEntrypoint,
   parseAionisAifsArgs,
   refreshAifsMirror,
   writeAifsFiles,
@@ -353,4 +355,20 @@ test("@aionis/aifs formats refresh summary", async () => {
 test("@aionis/aifs rejects unsafe relative output paths", () => {
   assert.throws(() => writeAifsFiles(".aionis", [{ relativePath: "../bad", content: "bad" }]));
   assert.throws(() => writeAifsFiles(".aionis", [{ relativePath: "/tmp/bad", content: "bad" }]));
+});
+
+test("@aionis/aifs detects npm symlink bin as CLI entrypoint", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aionis-aifs-bin-"));
+  const targetDir = path.join(dir, "package", "dist");
+  const binDir = path.join(dir, ".bin");
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.mkdirSync(binDir, { recursive: true });
+
+  const target = path.join(targetDir, "index.js");
+  const bin = path.join(binDir, "aionis-aifs");
+  fs.writeFileSync(target, "#!/usr/bin/env node\n", "utf8");
+  fs.symlinkSync(target, bin);
+
+  assert.equal(isCliEntrypoint(bin, pathToFileURL(target).href), true);
+  assert.equal(isCliEntrypoint(path.join(dir, "other-bin"), pathToFileURL(target).href), false);
 });
