@@ -10,11 +10,17 @@ It is intentionally not a FUSE/NFS mount. Phase 1 is a static, read-only mirror
 over the existing Aionis Runtime APIs.
 
 ```bash
+npx @aionis/aifs@latest init --scope my-project
+npx @aionis/aifs@latest doctor --scope my-project
 npx @aionis/aifs@latest refresh \
   --base-url http://127.0.0.1:3001 \
   --scope my-project \
   --query "Continue the current implementation without repeating failed branches."
 ```
+
+`init` creates a local `.aionis/README.md` and `.aionis/config.json`.
+`doctor` checks Runtime reachability and whether the file surface is healthy.
+`refresh` writes the governed context mirror.
 
 Execution-memory mode:
 
@@ -59,6 +65,7 @@ Useful options:
 
 | Option | Purpose |
 |---|---|
+| `--json` | Print machine-readable JSON instead of the default human summary. |
 | `--out <dir>` | Mirror destination. Defaults to `.aionis`. |
 | `--query <text>` | Current agent task/query. |
 | `--run-id <id>` | Current execution run id. Enables execution guide mode when paired with `--task-signature`. |
@@ -69,3 +76,17 @@ Useful options:
 | `--max-prompt-chars <n>` | Maximum generated `guide.md` size. |
 | `--include-base-prompt` / `--no-include-base-prompt` | Include or omit Runtime `agent_context.prompt_text` under the contract renderer. |
 
+Refresh summary:
+
+```text
+Aionis AIFS refreshed
+Output: /repo/.aionis
+Guide trace: guide-...
+Prompt chars: 4210
+Snapshot: written
+Surface counts:
+- use_now: 2
+- inspect_before_use: 1
+- do_not_use: 3
+- rehydrate: 1
+```

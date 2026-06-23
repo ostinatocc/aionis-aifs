@@ -5,6 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import {
   buildAifsFiles,
+  doctorAifsMirror,
+  formatDoctorSummary,
+  formatInitSummary,
+  formatRefreshSummary,
+  initAifsMirror,
   parseAionisAifsArgs,
   refreshAifsMirror,
   writeAifsFiles,
@@ -27,6 +32,7 @@ function baseOptions(overrides: Partial<AionisAifsOptions> = {}): AionisAifsOpti
     budget_profile: "balanced",
     include_base_prompt: false,
     snapshot: true,
+    output_format: "summary",
     cwd: process.cwd(),
     ...overrides,
   };
@@ -203,7 +209,18 @@ test("@aionis/aifs parses refresh args and env defaults", () => {
   assert.equal(options.role, "reviewer");
   assert.equal(options.budget_profile, "compact");
   assert.equal(options.snapshot, false);
+  assert.equal(options.output_format, "summary");
   assert.equal(options.cwd, "/tmp/project");
+});
+
+test("@aionis/aifs parses init, doctor, and json output", () => {
+  const initOptions = parseAionisAifsArgs(["init", "--scope", "checkout"], {}, "/tmp/project");
+  assert.equal(initOptions.command, "init");
+  assert.equal(initOptions.scope, "checkout");
+
+  const doctorOptions = parseAionisAifsArgs(["doctor", "--json"], {}, "/tmp/project");
+  assert.equal(doctorOptions.command, "doctor");
+  assert.equal(doctorOptions.output_format, "json");
 });
 
 test("@aionis/aifs builds governed file mirror from execution guide", async () => {
@@ -229,6 +246,12 @@ test("@aionis/aifs builds governed file mirror from execution guide", async () =
     "snapshots/latest.json",
     "manifest.json",
   ]);
+  assert.deepEqual(built.result.surface_counts, {
+    use_now: 1,
+    inspect_before_use: 1,
+    do_not_use: 1,
+    rehydrate: 1,
+  });
 
   const guide = built.files.find((file) => file.relativePath === "guide.md")?.content ?? "";
   const current = built.files.find((file) => file.relativePath === "current_active_path.md")?.content ?? "";
@@ -240,6 +263,59 @@ test("@aionis/aifs builds governed file mirror from execution guide", async () =
   assert.match(blocked, /mem-failed/);
   assert.match(blocked, /src\/fullBundleEnvironment\.ts/);
   assert.match(rehydrate, /mem-rehydrate/);
+});
+
+test("@aionis/aifs initializes local file surface", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aionis-aifs-init-"));
+  const result = initAifsMirror(baseOptions({ cwd: dir, outDir: ".aionis", scope: "scope-a" }));
+
+  assert.equal(result.out_dir, path.join(dir, ".aionis"));
+  assert.deepEqual(result.files, ["README.md", "config.json"]);
+  assert.equal(fs.existsSync(path.join(dir, ".aionis", "README.md")), true);
+  assert.equal(fs.existsSync(path.join(dir, ".aionis", "config.json")), true);
+  assert.match(fs.readFileSync(path.join(dir, ".aionis", "README.md"), "utf8"), /Configured scope: `scope-a`/);
+  assert.match(formatInitSummary(result), /Aionis AIFS initialized/);
+});
+
+test("@aionis/aifs doctor reports runtime and file checks", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aionis-aifs-doctor-"));
+  await refreshAifsMirror({
+    options: baseOptions({ cwd: dir, outDir: ".aionis" }),
+    client: fakeClient([]),
+    now: new Date("2026-06-23T00:00:00.000Z"),
+  });
+
+  const result = await doctorAifsMirror({
+    options: baseOptions({ cwd: dir, outDir: ".aionis" }),
+    client: fakeClient([]),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.checks.some((check) => check.name === "runtime_guide" && check.status === "ok"), true);
+  assert.equal(result.checks.some((check) => check.name === "generated_files" && check.status === "ok"), true);
+  assert.match(formatDoctorSummary(result), /doctor passed/);
+});
+
+test("@aionis/aifs doctor fails when Runtime guide fails", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aionis-aifs-doctor-fail-"));
+  const result = await doctorAifsMirror({
+    options: baseOptions({ cwd: dir, outDir: ".aionis" }),
+    client: {
+      guide: async () => {
+        throw new Error("Runtime unavailable");
+      },
+      snapshot: async () => ({}),
+      execution: {
+        guideForRole: async () => {
+          throw new Error("Runtime unavailable");
+        },
+      },
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.checks.some((check) => check.name === "runtime_guide" && check.status === "fail"), true);
+  assert.match(formatDoctorSummary(result), /found issues/);
 });
 
 test("@aionis/aifs writes .aionis mirror files", async () => {
@@ -258,6 +334,20 @@ test("@aionis/aifs writes .aionis mirror files", async () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, ".aionis", "manifest.json"), "utf8")) as Record<string, unknown>;
   assert.equal(manifest.contract_version, "aionis_aifs_manifest_v1");
   assert.equal(manifest.guide_trace_id, "guide-1");
+});
+
+test("@aionis/aifs formats refresh summary", async () => {
+  const built = await buildAifsFiles({
+    options: baseOptions(),
+    client: fakeClient([]),
+    now: new Date("2026-06-23T00:00:00.000Z"),
+  });
+  const summary = formatRefreshSummary(built.result);
+
+  assert.match(summary, /Aionis AIFS refreshed/);
+  assert.match(summary, /Guide trace: guide-1/);
+  assert.match(summary, /use_now: 1/);
+  assert.match(summary, /do_not_use: 1/);
 });
 
 test("@aionis/aifs rejects unsafe relative output paths", () => {

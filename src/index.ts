@@ -14,7 +14,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type AionisAifsCommand = "refresh";
+export type AionisAifsCommand = "refresh" | "init" | "doctor";
+export type AionisAifsOutputFormat = "summary" | "json";
 
 export type AionisAifsOptions = {
   command: AionisAifsCommand;
@@ -38,6 +39,7 @@ export type AionisAifsOptions = {
   max_prompt_chars?: number;
   include_base_prompt: boolean;
   snapshot: boolean;
+  output_format: AionisAifsOutputFormat;
   cwd: string;
 };
 
@@ -52,8 +54,35 @@ export type AionisAifsRefreshResult = {
   generated_at: string;
   guide_trace_id: string | null;
   prompt_char_count: number;
+  surface_counts: {
+    use_now: number;
+    inspect_before_use: number;
+    do_not_use: number;
+    rehydrate: number;
+  };
   files: string[];
   snapshot_status: "written" | "not_requested" | "unavailable";
+};
+
+export type AionisAifsInitResult = {
+  contract_version: "aionis_aifs_init_result_v1";
+  out_dir: string;
+  files: string[];
+};
+
+export type AionisAifsDoctorCheck = {
+  name: string;
+  status: "ok" | "warn" | "fail";
+  message: string;
+};
+
+export type AionisAifsDoctorResult = {
+  contract_version: "aionis_aifs_doctor_result_v1";
+  ok: boolean;
+  base_url: string;
+  scope: string | null;
+  out_dir: string;
+  checks: AionisAifsDoctorCheck[];
 };
 
 export type AionisAifsRefreshInput = {
@@ -103,7 +132,14 @@ function optionalPositiveInteger(value: string, flag: string): number {
 
 export function aionisAifsUsage(): string {
   return `Usage:
+  npx @aionis/aifs init [options]
+  npx @aionis/aifs doctor [options]
   npx @aionis/aifs refresh [options]
+
+Commands:
+  init                         Create a local .aionis README and config.
+  doctor                       Check Runtime reachability and .aionis file surface health.
+  refresh                      Generate the governed .aionis file mirror.
 
 Options:
   --base-url <url>              Aionis Runtime URL. Defaults to AIONIS_BASE_URL or ${DEFAULT_BASE_URL}
@@ -128,9 +164,12 @@ Options:
   --no-include-base-prompt      Omit Runtime base prompt. Default.
   --snapshot                    Fetch operator snapshot when possible. Default when --run-id is provided.
   --no-snapshot                 Do not fetch operator snapshot.
+  --json                        Print machine-readable JSON instead of a human summary.
   -h, --help                    Show help.
 
 Examples:
+  npx @aionis/aifs init --scope my-project
+  npx @aionis/aifs doctor --scope my-project
   npx @aionis/aifs refresh --scope my-project --query "Continue safely."
   npx @aionis/aifs refresh --run-id run-001 --task-signature checkout --role worker
   AIONIS_BASE_URL=http://127.0.0.1:3001 AIONIS_SCOPE=my-project npx @aionis/aifs refresh
@@ -144,14 +183,14 @@ export function parseAionisAifsArgs(
 ): AionisAifsOptions {
   const positional = [...argv];
   const first = positional[0];
-  const command: AionisAifsCommand = first === "refresh" ? "refresh" : "refresh";
-  let indexStart = first === "refresh" ? 1 : 0;
+  const command: AionisAifsCommand = first === "init" || first === "doctor" || first === "refresh" ? first : "refresh";
+  let indexStart = first === "init" || first === "doctor" || first === "refresh" ? 1 : 0;
   if (first === "-h" || first === "--help") {
     process.stdout.write(aionisAifsUsage());
     process.exit(0);
   }
-  if (first && !first.startsWith("-") && first !== "refresh") {
-    throw new Error(`Unknown command "${first}". Use refresh.`);
+  if (first && !first.startsWith("-") && first !== "init" && first !== "doctor" && first !== "refresh") {
+    throw new Error(`Unknown command "${first}". Use init, doctor, or refresh.`);
   }
 
   let baseUrl = env.AIONIS_BASE_URL?.trim() || env.AIONIS_PRODUCT_E2E_BASE_URL?.trim() || DEFAULT_BASE_URL;
@@ -179,6 +218,7 @@ export function parseAionisAifsArgs(
   let includeBasePrompt = env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "1" || env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "true";
   let snapshot = env.AIONIS_AIFS_SNAPSHOT === "1" || env.AIONIS_AIFS_SNAPSHOT === "true";
   let snapshotSet = env.AIONIS_AIFS_SNAPSHOT !== undefined;
+  let outputFormat: AionisAifsOutputFormat = env.AIONIS_AIFS_JSON === "1" || env.AIONIS_AIFS_JSON === "true" ? "json" : "summary";
 
   for (let index = indexStart; index < positional.length; index += 1) {
     const arg = positional[index];
@@ -294,6 +334,10 @@ export function parseAionisAifsArgs(
       snapshotSet = true;
       continue;
     }
+    if (arg === "--json") {
+      outputFormat = "json";
+      continue;
+    }
     throw new Error(`Unknown option "${arg}"`);
   }
 
@@ -321,6 +365,7 @@ export function parseAionisAifsArgs(
     max_prompt_chars: maxPromptChars,
     include_base_prompt: includeBasePrompt,
     snapshot,
+    output_format: outputFormat,
     cwd,
   };
 }
@@ -337,6 +382,10 @@ function clientOptionsFromAifs(options: AionisAifsOptions): AionisClientOptions 
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function arrayLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
 }
 
 function markdownList(values: string[], empty = "none"): string[] {
@@ -387,6 +436,44 @@ function readmeMarkdown(generatedAt: string): string {
     "Do not edit these files by hand. Run `aionis-aifs refresh` to update them.",
     "",
   ].join("\n");
+}
+
+function initReadmeMarkdown(scope: string | undefined): string {
+  return [
+    "# .aionis",
+    "",
+    "This directory is the Aionis File Surface for this workspace.",
+    "",
+    "Run:",
+    "",
+    "```bash",
+    "npx @aionis/aifs@latest refresh",
+    "```",
+    "",
+    "Then ask your agent to read:",
+    "",
+    "1. `.aionis/README.md`",
+    "2. `.aionis/guide.md`",
+    "3. `.aionis/current_active_path.md`",
+    "4. `.aionis/do_not_use.md`",
+    "5. `.aionis/rehydrate_needed.md`",
+    "",
+    "The Runtime remains the source of truth. These files are a generated read surface.",
+    "",
+    scope ? `Configured scope: \`${scope}\`` : "Configured scope: not set yet",
+    "",
+  ].join("\n");
+}
+
+function initConfig(options: AionisAifsOptions): AionisJsonObject {
+  return {
+    contract_version: "aionis_aifs_config_v1",
+    base_url: options.baseUrl,
+    tenant_id: options.tenant_id ?? null,
+    scope: options.scope ?? null,
+    default_query: options.query_text,
+    generated_by: "@aionis/aifs",
+  };
 }
 
 function manifestFile(input: {
@@ -515,6 +602,13 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
   });
   const snapshot = await fetchSnapshot(options, client);
   const guideTraceId = executionContext.memory_use_receipt.guide_trace_id;
+  const receipt = executionContext.memory_use_receipt as Record<string, unknown>;
+  const surfaceCounts = {
+    use_now: arrayLength(receipt.use_now_memory_ids),
+    inspect_before_use: arrayLength(receipt.inspect_before_use_memory_ids),
+    do_not_use: arrayLength(receipt.do_not_use_memory_ids),
+    rehydrate: arrayLength(receipt.rehydrate_memory_ids),
+  };
 
   const currentActivePath = [
     "# Current Active Path",
@@ -596,6 +690,7 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
       generated_at: generatedAt,
       guide_trace_id: guideTraceId,
       prompt_char_count: executionContext.prompt_char_count,
+      surface_counts: surfaceCounts,
       files: fileNames,
       snapshot_status: snapshot.status,
     },
@@ -625,11 +720,163 @@ export async function refreshAifsMirror(input: AionisAifsRefreshInput): Promise<
   return built.result;
 }
 
+export function initAifsMirror(options: AionisAifsOptions): AionisAifsInitResult {
+  const files: AionisAifsFile[] = [
+    { relativePath: "README.md", content: initReadmeMarkdown(options.scope) },
+    { relativePath: "config.json", content: json(initConfig(options)) },
+  ];
+  writeAifsFiles(options.outDir, files, options.cwd);
+  return {
+    contract_version: "aionis_aifs_init_result_v1",
+    out_dir: path.resolve(options.cwd, options.outDir),
+    files: files.map((file) => file.relativePath),
+  };
+}
+
+function pushCheck(checks: AionisAifsDoctorCheck[], check: AionisAifsDoctorCheck): void {
+  checks.push(check);
+}
+
+export async function doctorAifsMirror(input: AionisAifsRefreshInput): Promise<AionisAifsDoctorResult> {
+  const options = input.options;
+  const checks: AionisAifsDoctorCheck[] = [];
+  const root = path.resolve(options.cwd, options.outDir);
+  const parent = path.dirname(root);
+
+  try {
+    fs.mkdirSync(parent, { recursive: true });
+    fs.accessSync(parent, fs.constants.W_OK);
+    pushCheck(checks, {
+      name: "output_parent_writable",
+      status: "ok",
+      message: `Writable parent directory: ${parent}`,
+    });
+  } catch (error) {
+    pushCheck(checks, {
+      name: "output_parent_writable",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (fs.existsSync(root)) {
+    const required = [
+      "README.md",
+      "guide.md",
+      "current_active_path.md",
+      "inspect_before_use.md",
+      "do_not_use.md",
+      "rehydrate_needed.md",
+      "receipts/latest.json",
+      "snapshots/latest.json",
+      "manifest.json",
+    ];
+    const missing = required.filter((file) => !fs.existsSync(path.join(root, file)));
+    pushCheck(checks, {
+      name: "generated_files",
+      status: missing.length === 0 ? "ok" : "warn",
+      message: missing.length === 0 ? "All expected AIFS files exist." : `Missing generated files: ${missing.join(", ")}`,
+    });
+  } else {
+    pushCheck(checks, {
+      name: "generated_files",
+      status: "warn",
+      message: `${root} does not exist yet. Run aionis-aifs refresh.`,
+    });
+  }
+
+  try {
+    const client = input.client ?? createAionisClient(clientOptionsFromAifs(options));
+    await fetchGuide(input, client);
+    pushCheck(checks, {
+      name: "runtime_guide",
+      status: "ok",
+      message: `Runtime guide succeeded at ${options.baseUrl}`,
+    });
+  } catch (error) {
+    pushCheck(checks, {
+      name: "runtime_guide",
+      status: "fail",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return {
+    contract_version: "aionis_aifs_doctor_result_v1",
+    ok: checks.every((check) => check.status !== "fail"),
+    base_url: options.baseUrl,
+    scope: options.scope ?? null,
+    out_dir: root,
+    checks,
+  };
+}
+
+export function formatInitSummary(result: AionisAifsInitResult): string {
+  return [
+    "Aionis AIFS initialized",
+    `Output: ${result.out_dir}`,
+    "Files:",
+    ...result.files.map((file) => `- ${file}`),
+    "",
+    "Next:",
+    "npx @aionis/aifs@latest doctor",
+    "npx @aionis/aifs@latest refresh",
+    "",
+  ].join("\n");
+}
+
+export function formatRefreshSummary(result: AionisAifsRefreshResult): string {
+  return [
+    "Aionis AIFS refreshed",
+    `Output: ${result.out_dir}`,
+    `Guide trace: ${result.guide_trace_id ?? "none"}`,
+    `Prompt chars: ${result.prompt_char_count}`,
+    `Snapshot: ${result.snapshot_status}`,
+    "Surface counts:",
+    `- use_now: ${result.surface_counts.use_now}`,
+    `- inspect_before_use: ${result.surface_counts.inspect_before_use}`,
+    `- do_not_use: ${result.surface_counts.do_not_use}`,
+    `- rehydrate: ${result.surface_counts.rehydrate}`,
+    "Files:",
+    ...result.files.map((file) => `- ${file}`),
+    "",
+    "Agent read order:",
+    "1. .aionis/README.md",
+    "2. .aionis/guide.md",
+    "3. .aionis/current_active_path.md",
+    "4. .aionis/do_not_use.md",
+    "5. .aionis/rehydrate_needed.md",
+    "",
+  ].join("\n");
+}
+
+export function formatDoctorSummary(result: AionisAifsDoctorResult): string {
+  return [
+    result.ok ? "Aionis AIFS doctor passed" : "Aionis AIFS doctor found issues",
+    `Runtime: ${result.base_url}`,
+    `Scope: ${result.scope ?? "not set"}`,
+    `Output: ${result.out_dir}`,
+    "Checks:",
+    ...result.checks.map((check) => `- [${check.status}] ${check.name}: ${check.message}`),
+    "",
+  ].join("\n");
+}
+
 async function main(): Promise<void> {
   const options = parseAionisAifsArgs();
-  if (options.command !== "refresh") throw new Error(`Unsupported command: ${options.command}`);
+  if (options.command === "init") {
+    const result = initAifsMirror(options);
+    process.stdout.write(options.output_format === "json" ? json(result) : formatInitSummary(result));
+    return;
+  }
+  if (options.command === "doctor") {
+    const result = await doctorAifsMirror({ options });
+    process.stdout.write(options.output_format === "json" ? json(result) : formatDoctorSummary(result));
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
   const result = await refreshAifsMirror({ options });
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  process.stdout.write(options.output_format === "json" ? json(result) : formatRefreshSummary(result));
 }
 
 function isCliEntrypoint(): boolean {
