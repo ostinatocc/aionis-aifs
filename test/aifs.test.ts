@@ -1,0 +1,266 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import {
+  buildAifsFiles,
+  parseAionisAifsArgs,
+  refreshAifsMirror,
+  writeAifsFiles,
+  type AionisAifsOptions,
+} from "../src/index.ts";
+
+function baseOptions(overrides: Partial<AionisAifsOptions> = {}): AionisAifsOptions {
+  return {
+    command: "refresh",
+    baseUrl: "http://runtime.test",
+    tenant_id: "tenant-a",
+    scope: "scope-a",
+    outDir: ".aionis",
+    query_text: "Continue the accepted checkout path.",
+    run_id: "run-1",
+    task_signature: "checkout-migration",
+    role: "worker",
+    mode: "full_power",
+    context_mode: "compact_agent",
+    budget_profile: "balanced",
+    include_base_prompt: false,
+    snapshot: true,
+    cwd: process.cwd(),
+    ...overrides,
+  };
+}
+
+function fakeGuide() {
+  return {
+    guide_trace_id: "guide-1",
+    tenant_id: "tenant-a",
+    scope: "scope-a",
+    agent_context: {
+      prompt_text: "AIONIS_CTX\nContinue accepted checkout adapter path.",
+      command_posture: [
+        {
+          posture: "should_continue",
+          surface: "current",
+          memory_id: "mem-current",
+          instruction: "Continue the checkout adapter.",
+          reason: "It is the accepted route.",
+          target_files: ["src/checkoutAdapter.ts"],
+        },
+        {
+          posture: "inspect_first",
+          surface: "inspect_before_use",
+          memory_id: "mem-candidate",
+          instruction: "Inspect candidate migration note before action.",
+          reason: "Candidate evidence only.",
+          target_files: ["src/candidate.ts"],
+        },
+        {
+          posture: "must_not",
+          surface: "do_not_use",
+          memory_id: "mem-failed",
+          instruction: "Do not extend the legacy full bundle route.",
+          reason: "Verifier rejected it.",
+          target_files: ["src/fullBundleEnvironment.ts"],
+        },
+      ],
+      route_contract: {
+        active_targets: [
+          {
+            target: "src/checkoutAdapter.ts",
+            source_memory_id: "mem-current",
+            source: "should_continue",
+            artifact_status: "may_be_absent",
+            missing_policy: "restore_or_create_if_task_consistent_or_rehydrate",
+          },
+        ],
+        pending_artifacts: [
+          {
+            target: "src/checkoutAdapter.ts",
+            source_memory_id: "mem-current",
+            source: "should_continue",
+            allowed_actions: ["create", "restore", "rehydrate"],
+          },
+        ],
+        reference_only_targets: [],
+        blocked_direction_targets: [
+          {
+            target: "src/fullBundleEnvironment.ts",
+            source_memory_id: "mem-failed",
+            source: "must_not",
+          },
+        ],
+        evidence_sources: [],
+        blocked_routes: [
+          {
+            target: "src/fullBundleEnvironment.ts",
+            source_memory_id: "mem-failed",
+            source: "must_not",
+          },
+        ],
+      },
+      rehydrate_hints: [
+        {
+          memory_id: "mem-rehydrate",
+          reason: "Exact patch evidence is compact.",
+          required: true,
+        },
+      ],
+    },
+    memory_decision_trace: {
+      memory_use_receipt: {
+        contract_version: "aionis_memory_use_receipt_v1",
+        intended_use: "memory_use_audit",
+        agent_prompt_included: false,
+        runtime_mutation: false,
+        guide_trace_id: "guide-1",
+        history_used: true,
+        actionable_history_used: true,
+        prompt_char_count: 123,
+        exposed_memory_ids: ["mem-current", "mem-candidate", "mem-failed", "mem-rehydrate"],
+        use_now_memory_ids: ["mem-current"],
+        inspect_before_use_memory_ids: ["mem-candidate"],
+        do_not_use_memory_ids: ["mem-failed"],
+        rehydrate_memory_ids: ["mem-rehydrate"],
+        attributed_memory_ids: [],
+        unattributed_recalled_memory_ids: [],
+        read_only_signal_memory_ids: [],
+        decision_summaries: [
+          {
+            memory_id: "mem-current",
+            agent_surface: "use_now",
+            decision_kind: "used",
+            actionable: true,
+            reason_codes: ["current_execution_state"],
+          },
+          {
+            memory_id: "mem-failed",
+            agent_surface: "do_not_use",
+            decision_kind: "blocked",
+            actionable: false,
+            reason_codes: ["failed_branch"],
+          },
+        ],
+        risk_flags: [],
+        summary: "Aionis exposed current state and blocked failed branch.",
+      },
+    },
+  };
+}
+
+function fakeClient(calls: string[]) {
+  return {
+    guide: async () => {
+      calls.push("guide");
+      return fakeGuide();
+    },
+    snapshot: async (input: unknown) => {
+      calls.push(`snapshot:${JSON.stringify(input)}`);
+      return {
+        contract_version: "aionis_operator_snapshot_v1",
+        run_id: "run-1",
+        status: "ok",
+      };
+    },
+    execution: {
+      guideForRole: async (input: unknown) => {
+        calls.push(`guideForRole:${JSON.stringify(input)}`);
+        return fakeGuide();
+      },
+    },
+  };
+}
+
+test("@aionis/aifs parses refresh args and env defaults", () => {
+  const options = parseAionisAifsArgs([
+    "refresh",
+    "--base-url",
+    "http://127.0.0.1:3101",
+    "--scope",
+    "checkout",
+    "--query",
+    "Continue",
+    "--run-id",
+    "run-1",
+    "--task-signature",
+    "checkout",
+    "--role",
+    "reviewer",
+    "--budget-profile",
+    "compact",
+    "--no-snapshot",
+  ], {
+    AIONIS_TENANT_ID: "tenant-a",
+  }, "/tmp/project");
+
+  assert.equal(options.baseUrl, "http://127.0.0.1:3101");
+  assert.equal(options.tenant_id, "tenant-a");
+  assert.equal(options.scope, "checkout");
+  assert.equal(options.query_text, "Continue");
+  assert.equal(options.run_id, "run-1");
+  assert.equal(options.task_signature, "checkout");
+  assert.equal(options.role, "reviewer");
+  assert.equal(options.budget_profile, "compact");
+  assert.equal(options.snapshot, false);
+  assert.equal(options.cwd, "/tmp/project");
+});
+
+test("@aionis/aifs builds governed file mirror from execution guide", async () => {
+  const calls: string[] = [];
+  const built = await buildAifsFiles({
+    options: baseOptions(),
+    client: fakeClient(calls),
+    now: new Date("2026-06-23T00:00:00.000Z"),
+  });
+
+  assert.equal(built.result.guide_trace_id, "guide-1");
+  assert.equal(built.result.snapshot_status, "written");
+  assert.equal(calls.some((call) => call.startsWith("guideForRole:")), true);
+  assert.equal(calls.some((call) => call.startsWith("snapshot:")), true);
+  assert.deepEqual(built.result.files, [
+    "README.md",
+    "guide.md",
+    "current_active_path.md",
+    "inspect_before_use.md",
+    "do_not_use.md",
+    "rehydrate_needed.md",
+    "receipts/latest.json",
+    "snapshots/latest.json",
+    "manifest.json",
+  ]);
+
+  const guide = built.files.find((file) => file.relativePath === "guide.md")?.content ?? "";
+  const current = built.files.find((file) => file.relativePath === "current_active_path.md")?.content ?? "";
+  const blocked = built.files.find((file) => file.relativePath === "do_not_use.md")?.content ?? "";
+  const rehydrate = built.files.find((file) => file.relativePath === "rehydrate_needed.md")?.content ?? "";
+
+  assert.match(guide, /AIONIS_EXECUTION_AGENT_CONTEXT v1/);
+  assert.match(current, /src\/checkoutAdapter\.ts/);
+  assert.match(blocked, /mem-failed/);
+  assert.match(blocked, /src\/fullBundleEnvironment\.ts/);
+  assert.match(rehydrate, /mem-rehydrate/);
+});
+
+test("@aionis/aifs writes .aionis mirror files", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aionis-aifs-"));
+  const result = await refreshAifsMirror({
+    options: baseOptions({ cwd: dir, outDir: ".aionis" }),
+    client: fakeClient([]),
+    now: new Date("2026-06-23T00:00:00.000Z"),
+  });
+
+  assert.equal(result.out_dir, path.join(dir, ".aionis"));
+  assert.equal(fs.existsSync(path.join(dir, ".aionis", "guide.md")), true);
+  assert.equal(fs.existsSync(path.join(dir, ".aionis", "receipts", "latest.json")), true);
+  assert.equal(fs.existsSync(path.join(dir, ".aionis", "snapshots", "latest.json")), true);
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, ".aionis", "manifest.json"), "utf8")) as Record<string, unknown>;
+  assert.equal(manifest.contract_version, "aionis_aifs_manifest_v1");
+  assert.equal(manifest.guide_trace_id, "guide-1");
+});
+
+test("@aionis/aifs rejects unsafe relative output paths", () => {
+  assert.throws(() => writeAifsFiles(".aionis", [{ relativePath: "../bad", content: "bad" }]));
+  assert.throws(() => writeAifsFiles(".aionis", [{ relativePath: "/tmp/bad", content: "bad" }]));
+});

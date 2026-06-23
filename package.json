@@ -1,0 +1,48 @@
+{
+  "name": "@aionis/aifs",
+  "version": "0.1.0",
+  "description": "Aionis File Surface: mirror governed execution memory into .aionis files for coding agents.",
+  "license": "Apache-2.0",
+  "homepage": "https://docs.aionis.work/plugins",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ostinatocc/aionis-aifs.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "aionis-aifs": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@aionis/sdk": "^0.2.23"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.22.4",
+    "typescript": "^5.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
