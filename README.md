@@ -19,7 +19,7 @@ npx @aionis/aifs@latest doctor --scope my-project
 npx @aionis/aifs@latest refresh \
   --base-url http://127.0.0.1:3001 \
   --scope my-project \
-  --query "Continue the current implementation without repeating failed branches."
+  --query "Continue the current implementation from the accepted state."
 ```
 
 `init` creates a local `.aionis/README.md` and `.aionis/config.json`.
