@@ -6,6 +6,10 @@ Aionis File Surface for governed execution memory.
 snapshot metadata into a local `.aionis/` directory so coding agents can read
 Aionis context with normal file operations.
 
+The final Agent-facing file, `.aionis/guide.md`, is generated from the same SDK
+AgentContext path as `guideAgentContext()` / `execution.guideAgentContextForRole()`.
+AIFS is a file transport, not a separate context compiler.
+
 It is intentionally not a FUSE/NFS mount. Phase 1 is a static, read-only mirror
 over the existing Aionis Runtime APIs.
 
@@ -88,7 +92,7 @@ Useful options:
 | `--context-mode <standard|compact_agent>` | Runtime context rendering mode. Defaults to `compact_agent`. |
 | `--budget-profile <compact|balanced|high_recall>` | SDK execution prompt budget profile. Defaults to `balanced`. |
 | `--max-prompt-chars <n>` | Maximum generated `guide.md` size. |
-| `--include-base-prompt` / `--no-include-base-prompt` | Include or omit Runtime `agent_context.prompt_text` under the contract renderer. |
+| `--include-base-prompt` / `--no-include-base-prompt` | Include or omit the lower-level Runtime guide text under the SDK AgentContext renderer. |
 | `--agent-instruction` / `--no-agent-instruction` | Write or omit `.aionis/AGENT_INSTRUCTIONS.md`. Enabled by default. |
 
 Refresh summary:

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
+import { compileExecutionAgentContext } from "@aionis/sdk";
 import {
   buildAifsFiles,
   doctorAifsMirror,
@@ -158,11 +159,31 @@ function fakeGuide() {
   };
 }
 
+function fakeAgentContext(contextOptions: Record<string, unknown> = {}) {
+  const guide = fakeGuide();
+  const compiled = compileExecutionAgentContext({
+    guide,
+    ...contextOptions,
+  });
+  return {
+    contract_version: "aionis_sdk_agent_context_with_evidence_v1",
+    guide,
+    compiled_context: compiled,
+    agent_context: guide.agent_context,
+    agent_prompt: compiled.agent_prompt,
+    resolved_evidence: [],
+    unresolved_memory_ids: [],
+    evidence_char_count: 0,
+    prompt_char_count: compiled.agent_prompt.length,
+    guide_trace_id: guide.guide_trace_id,
+  };
+}
+
 function fakeClient(calls: string[]) {
   return {
-    guide: async () => {
-      calls.push("guide");
-      return fakeGuide();
+    guideAgentContext: async (_input: unknown, _options: unknown, contextOptions: Record<string, unknown>) => {
+      calls.push("guideAgentContext");
+      return fakeAgentContext(contextOptions);
     },
     snapshot: async (input: unknown) => {
       calls.push(`snapshot:${JSON.stringify(input)}`);
@@ -173,9 +194,9 @@ function fakeClient(calls: string[]) {
       };
     },
     execution: {
-      guideForRole: async (input: unknown) => {
-        calls.push(`guideForRole:${JSON.stringify(input)}`);
-        return fakeGuide();
+      guideAgentContextForRole: async (input: unknown, _options: unknown, contextOptions: Record<string, unknown>) => {
+        calls.push(`guideAgentContextForRole:${JSON.stringify(input)}`);
+        return fakeAgentContext(contextOptions);
       },
     },
   };
@@ -239,7 +260,7 @@ test("@aionis/aifs builds governed file mirror from execution guide", async () =
 
   assert.equal(built.result.guide_trace_id, "guide-1");
   assert.equal(built.result.snapshot_status, "written");
-  assert.equal(calls.some((call) => call.startsWith("guideForRole:")), true);
+  assert.equal(calls.some((call) => call.startsWith("guideAgentContextForRole:")), true);
   assert.equal(calls.some((call) => call.startsWith("snapshot:")), true);
   assert.deepEqual(built.result.files, [
     "README.md",
@@ -314,12 +335,12 @@ test("@aionis/aifs doctor fails when Runtime guide fails", async () => {
   const result = await doctorAifsMirror({
     options: baseOptions({ cwd: dir, outDir: ".aionis" }),
     client: {
-      guide: async () => {
+      guideAgentContext: async () => {
         throw new Error("Runtime unavailable");
       },
       snapshot: async () => ({}),
       execution: {
-        guideForRole: async () => {
+        guideAgentContextForRole: async () => {
           throw new Error("Runtime unavailable");
         },
       },

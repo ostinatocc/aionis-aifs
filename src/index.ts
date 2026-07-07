@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import {
-  compileExecutionAgentContext,
   createAionisClient,
   type AionisClient,
   type AionisClientOptions,
+  type AionisCompiledExecutionAgentContext,
   type AionisExecutionAgentRole,
   type AionisExecutionContextBudgetProfile,
   type AionisGuideContextMode,
@@ -88,10 +88,17 @@ export type AionisAifsDoctorResult = {
 
 export type AionisAifsRefreshInput = {
   options: AionisAifsOptions;
-  client?: Pick<AionisClient, "guide" | "snapshot"> & {
-    execution: Pick<AionisClient["execution"], "guideForRole">;
+  client?: Pick<AionisClient, "guideAgentContext" | "snapshot"> & {
+    execution: Pick<AionisClient["execution"], "guideAgentContextForRole">;
   };
   now?: Date;
+};
+
+type AionisAgentContextLike = {
+  guide: unknown;
+  compiled_context: AionisCompiledExecutionAgentContext;
+  agent_prompt: string;
+  guide_trace_id: string | null;
 };
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3001";
@@ -562,10 +569,26 @@ function manifestFile(input: {
   };
 }
 
-async function fetchGuide(input: AionisAifsRefreshInput, client: NonNullable<AionisAifsRefreshInput["client"]>): Promise<unknown> {
+async function fetchAgentContext(
+  input: AionisAifsRefreshInput,
+  client: NonNullable<AionisAifsRefreshInput["client"]>,
+): Promise<AionisAgentContextLike> {
   const options = input.options;
+  const task = {
+    task_id: options.task_id,
+    run_id: options.run_id,
+    task_signature: options.task_signature ?? "aionis-aifs",
+    query_text: options.query_text,
+  };
+  const contextOptions = {
+    task,
+    budget_profile: options.budget_profile,
+    max_prompt_chars: options.max_prompt_chars,
+    include_base_prompt: options.include_base_prompt,
+  };
+
   if (options.run_id && options.task_signature) {
-    return client.execution.guideForRole({
+    return client.execution.guideAgentContextForRole({
       run_id: options.run_id,
       task_id: options.task_id,
       task_signature: options.task_signature,
@@ -580,10 +603,10 @@ async function fetchGuide(input: AionisAifsRefreshInput, client: NonNullable<Aio
       mode: options.mode,
       context_mode: options.context_mode,
       include_packets: true,
-    });
+    }, undefined, contextOptions);
   }
 
-  return client.guide({
+  return client.guideAgentContext({
     query_text: options.query_text,
     consumer_agent_id: options.agent_id,
     tenant_id: options.tenant_id,
@@ -591,7 +614,7 @@ async function fetchGuide(input: AionisAifsRefreshInput, client: NonNullable<Aio
     mode: options.mode,
     context_mode: options.context_mode,
     include_packets: true,
-  });
+  }, undefined, contextOptions);
 }
 
 async function fetchSnapshot(
@@ -645,19 +668,8 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
   const options = input.options;
   const client = input.client ?? createAionisClient(clientOptionsFromAifs(options));
   const generatedAt = (input.now ?? new Date()).toISOString();
-  const guide = await fetchGuide(input, client);
-  const executionContext = compileExecutionAgentContext({
-    guide,
-    task: {
-      task_id: options.task_id,
-      run_id: options.run_id,
-      task_signature: options.task_signature ?? "aionis-aifs",
-      query_text: options.query_text,
-    },
-    budget_profile: options.budget_profile,
-    max_prompt_chars: options.max_prompt_chars,
-    include_base_prompt: options.include_base_prompt,
-  });
+  const agentContext = await fetchAgentContext(input, client);
+  const executionContext = agentContext.compiled_context;
   const snapshot = await fetchSnapshot(options, client);
   const guideTraceId = executionContext.memory_use_receipt.guide_trace_id;
   const receipt = executionContext.memory_use_receipt as Record<string, unknown>;
@@ -868,7 +880,7 @@ export async function doctorAifsMirror(input: AionisAifsRefreshInput): Promise<A
 
   try {
     const client = input.client ?? createAionisClient(clientOptionsFromAifs(options));
-    await fetchGuide(input, client);
+    await fetchAgentContext(input, client);
     pushCheck(checks, {
       name: "runtime_guide",
       status: "ok",
