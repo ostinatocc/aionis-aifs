@@ -98,6 +98,7 @@ type AionisAgentContextLike = {
   guide: unknown;
   compiled_context: AionisCompiledExecutionAgentContext;
   agent_prompt: string;
+  prompt_char_count?: number;
   guide_trace_id: string | null;
 };
 
@@ -670,6 +671,8 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
   const generatedAt = (input.now ?? new Date()).toISOString();
   const agentContext = await fetchAgentContext(input, client);
   const executionContext = agentContext.compiled_context;
+  const agentPrompt = agentContext.agent_prompt;
+  const agentPromptCharCount = agentContext.prompt_char_count ?? agentPrompt.length;
   const snapshot = await fetchSnapshot(options, client);
   const guideTraceId = executionContext.memory_use_receipt.guide_trace_id;
   const receipt = executionContext.memory_use_receipt as Record<string, unknown>;
@@ -722,11 +725,11 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
           generatedAt,
           options,
           guideTraceId,
-          promptCharCount: executionContext.prompt_char_count,
+          promptCharCount: agentPromptCharCount,
         }),
       }]
       : []),
-    { relativePath: "guide.md", content: `${executionContext.agent_prompt}\n` },
+    { relativePath: "guide.md", content: `${agentPrompt}\n` },
     { relativePath: "current_active_path.md", content: currentActivePath },
     {
       relativePath: "inspect_before_use.md",
@@ -755,7 +758,7 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
     options,
     generatedAt,
     guideTraceId,
-    promptCharCount: executionContext.prompt_char_count,
+    promptCharCount: agentPromptCharCount,
     snapshotStatus: snapshot.status,
     files: fileNames,
   });
@@ -770,7 +773,7 @@ export async function buildAifsFiles(input: AionisAifsRefreshInput): Promise<{
       out_dir: path.resolve(options.cwd, options.outDir),
       generated_at: generatedAt,
       guide_trace_id: guideTraceId,
-      prompt_char_count: executionContext.prompt_char_count,
+      prompt_char_count: agentPromptCharCount,
       surface_counts: surfaceCounts,
       files: fileNames,
       snapshot_status: snapshot.status,

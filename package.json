@@ -1,6 +1,6 @@
 {
   "name": "@aionis/aifs",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Aionis File Surface: mirror governed execution memory into .aionis files for coding agents.",
   "license": "Apache-2.0",
   "homepage": "https://docs.aionis.work/plugins",
@@ -35,7 +35,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@aionis/sdk": "^0.3.9"
+    "@aionis/sdk": "^0.3.10"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

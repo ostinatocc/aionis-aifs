@@ -8,7 +8,8 @@ Aionis context with normal file operations.
 
 The final Agent-facing file, `.aionis/guide.md`, is generated from the same SDK
 AgentContext path as `guideAgentContext()` / `execution.guideAgentContextForRole()`.
-AIFS is a file transport, not a separate context compiler.
+AIFS writes the SDK top-level `agent_prompt` into that file; it is a file
+transport, not a separate context compiler.
 
 It is intentionally not a FUSE/NFS mount. Phase 1 is a static, read-only mirror
 over the existing Aionis Runtime APIs.

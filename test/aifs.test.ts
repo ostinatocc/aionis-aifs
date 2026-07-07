@@ -165,16 +165,17 @@ function fakeAgentContext(contextOptions: Record<string, unknown> = {}) {
     guide,
     ...contextOptions,
   });
+  const agentPrompt = guide.agent_context.prompt_text;
   return {
     contract_version: "aionis_sdk_agent_context_with_evidence_v1",
     guide,
     compiled_context: compiled,
     agent_context: guide.agent_context,
-    agent_prompt: compiled.agent_prompt,
+    agent_prompt: agentPrompt,
     resolved_evidence: [],
     unresolved_memory_ids: [],
     evidence_char_count: 0,
-    prompt_char_count: compiled.agent_prompt.length,
+    prompt_char_count: agentPrompt.length,
     guide_trace_id: guide.guide_trace_id,
   };
 }
@@ -287,7 +288,8 @@ test("@aionis/aifs builds governed file mirror from execution guide", async () =
   const blocked = built.files.find((file) => file.relativePath === "do_not_use.md")?.content ?? "";
   const rehydrate = built.files.find((file) => file.relativePath === "rehydrate_needed.md")?.content ?? "";
 
-  assert.match(guide, /AIONIS_EXECUTION_AGENT_CONTEXT v1/);
+  assert.match(guide, /AIONIS_CTX/);
+  assert.doesNotMatch(guide, /AIONIS_EXECUTION_AGENT_CONTEXT v1/);
   assert.match(instructions, /Aionis Agent Instructions/);
   assert.match(instructions, /current_active_path\.md/);
   assert.match(instructions, /do_not_use\.md/);
