@@ -90,7 +90,7 @@ Useful options:
 | `--run-id <id>` | Current execution run id. Enables execution guide mode when paired with `--task-signature`. |
 | `--task-signature <id>` | Stable task/workflow signature. |
 | `--role <agent|planner|worker|verifier|reviewer>` | Execution role for guideForRole. |
-| `--context-mode <standard|compact_agent>` | Runtime context rendering mode. Defaults to `compact_agent`. |
+| `--context-mode <standard|compact_agent>` | Runtime context rendering mode. Defaults to Runtime standard AgentContext. |
 | `--budget-profile <compact|balanced|high_recall>` | SDK execution prompt budget profile. Defaults to `balanced`. |
 | `--max-prompt-chars <n>` | Maximum generated `guide.md` size. |
 | `--include-base-prompt` / `--no-include-base-prompt` | Include or omit the lower-level Runtime guide text under the SDK AgentContext renderer. |

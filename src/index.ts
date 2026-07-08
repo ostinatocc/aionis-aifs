@@ -166,11 +166,11 @@ Options:
   --team-id <id>                Optional team id.
   --role <role>                 agent, planner, worker, verifier, or reviewer. Defaults to agent.
   --mode <name>                 Runtime guide mode. Defaults to full_power.
-  --context-mode <name>         standard, compact_agent, or full_power. Defaults to compact_agent.
+  --context-mode <name>         standard, compact_agent, or full_power. Defaults to Runtime standard AgentContext.
   --budget-profile <profile>    compact, balanced, or high_recall. Defaults to balanced.
   --max-prompt-chars <n>        Maximum guide.md chars.
-  --include-base-prompt         Include Runtime base prompt under the AIFS execution contract.
-  --no-include-base-prompt      Omit Runtime base prompt. Default.
+  --include-base-prompt         Include Runtime base prompt under the AIFS execution contract. Default.
+  --no-include-base-prompt      Omit Runtime base prompt.
   --agent-instruction           Write AGENT_INSTRUCTIONS.md for file-reading agents. Default.
   --no-agent-instruction        Omit AGENT_INSTRUCTIONS.md.
   --snapshot                    Fetch operator snapshot when possible. Default when --run-id is provided.
@@ -219,14 +219,16 @@ export function parseAionisAifsArgs(
   let teamId = env.AIONIS_TEAM_ID?.trim() || undefined;
   let role: AionisExecutionAgentRole | undefined = env.AIONIS_AGENT_ROLE ? parseRole(env.AIONIS_AGENT_ROLE.trim()) : "agent";
   let mode: AionisGuideMode = env.AIONIS_GUIDE_MODE ? parseGuideMode(env.AIONIS_GUIDE_MODE.trim()) : "full_power";
-  let contextMode: AionisGuideContextMode = env.AIONIS_CONTEXT_MODE ? parseContextMode(env.AIONIS_CONTEXT_MODE.trim()) : "compact_agent";
+  let contextMode: AionisGuideContextMode | undefined = env.AIONIS_CONTEXT_MODE ? parseContextMode(env.AIONIS_CONTEXT_MODE.trim()) : undefined;
   let budgetProfile: AionisExecutionContextBudgetProfile = env.AIONIS_AIFS_BUDGET_PROFILE
     ? parseBudgetProfile(env.AIONIS_AIFS_BUDGET_PROFILE.trim())
     : "balanced";
   let maxPromptChars = env.AIONIS_AIFS_MAX_PROMPT_CHARS
     ? optionalPositiveInteger(env.AIONIS_AIFS_MAX_PROMPT_CHARS.trim(), "AIONIS_AIFS_MAX_PROMPT_CHARS")
     : undefined;
-  let includeBasePrompt = env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "1" || env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "true";
+  let includeBasePrompt = env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "0" || env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "false"
+    ? false
+    : true;
   let agentInstruction = env.AIONIS_AIFS_AGENT_INSTRUCTION !== "0" && env.AIONIS_AIFS_AGENT_INSTRUCTION !== "false";
   let snapshot = env.AIONIS_AIFS_SNAPSHOT === "1" || env.AIONIS_AIFS_SNAPSHOT === "true";
   let snapshotSet = env.AIONIS_AIFS_SNAPSHOT !== undefined;
