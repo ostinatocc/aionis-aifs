@@ -35,7 +35,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@aionis/sdk": "^0.3.10"
+    "@aionis/sdk": "^0.3.13"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
