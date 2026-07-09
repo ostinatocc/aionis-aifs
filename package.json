@@ -1,6 +1,6 @@
 {
   "name": "@aionis/aifs",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Aionis File Surface: mirror governed execution memory into .aionis files for coding agents.",
   "license": "Apache-2.0",
   "homepage": "https://docs.aionis.work/plugins",
