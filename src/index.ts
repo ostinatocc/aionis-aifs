@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 export type AionisAifsCommand = "refresh" | "init" | "doctor";
 export type AionisAifsOutputFormat = "summary" | "json";
+export type AionisAgentPromptFormat = "contract" | "runtime_compact";
 
 export type AionisAifsOptions = {
   command: AionisAifsCommand;
@@ -37,7 +38,7 @@ export type AionisAifsOptions = {
   context_mode?: AionisGuideContextMode;
   budget_profile: AionisExecutionContextBudgetProfile;
   max_prompt_chars?: number;
-  include_base_prompt: boolean;
+  prompt_format: AionisAgentPromptFormat;
   agent_instruction: boolean;
   snapshot: boolean;
   output_format: AionisAifsOutputFormat;
@@ -126,6 +127,11 @@ function parseBudgetProfile(value: string): AionisExecutionContextBudgetProfile 
   throw new Error(`Unsupported budget profile "${value}". Use compact, balanced, or high_recall.`);
 }
 
+function parsePromptFormat(value: string): AionisAgentPromptFormat {
+  if (value === "contract" || value === "runtime_compact") return value;
+  throw new Error(`Unsupported prompt format "${value}". Use contract or runtime_compact.`);
+}
+
 function parseRole(value: string): AionisExecutionAgentRole {
   if (value === "agent" || value === "planner" || value === "worker" || value === "verifier" || value === "reviewer") {
     return value;
@@ -168,9 +174,8 @@ Options:
   --mode <name>                 Runtime guide mode. Defaults to full_power.
   --context-mode <name>         standard, compact_agent, or full_power. Defaults to Runtime standard AgentContext.
   --budget-profile <profile>    compact, balanced, or high_recall. Defaults to balanced.
+  --prompt-format <format>      contract or runtime_compact. Defaults to contract.
   --max-prompt-chars <n>        Maximum guide.md chars.
-  --include-base-prompt         Include Runtime base prompt under the AIFS execution contract. Default.
-  --no-include-base-prompt      Omit Runtime base prompt.
   --agent-instruction           Write AGENT_INSTRUCTIONS.md for file-reading agents. Default.
   --no-agent-instruction        Omit AGENT_INSTRUCTIONS.md.
   --snapshot                    Fetch operator snapshot when possible. Default when --run-id is provided.
@@ -223,12 +228,12 @@ export function parseAionisAifsArgs(
   let budgetProfile: AionisExecutionContextBudgetProfile = env.AIONIS_AIFS_BUDGET_PROFILE
     ? parseBudgetProfile(env.AIONIS_AIFS_BUDGET_PROFILE.trim())
     : "balanced";
+  let promptFormat: AionisAgentPromptFormat = env.AIONIS_AIFS_PROMPT_FORMAT
+    ? parsePromptFormat(env.AIONIS_AIFS_PROMPT_FORMAT.trim())
+    : "contract";
   let maxPromptChars = env.AIONIS_AIFS_MAX_PROMPT_CHARS
     ? optionalPositiveInteger(env.AIONIS_AIFS_MAX_PROMPT_CHARS.trim(), "AIONIS_AIFS_MAX_PROMPT_CHARS")
     : undefined;
-  let includeBasePrompt = env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "0" || env.AIONIS_AIFS_INCLUDE_BASE_PROMPT === "false"
-    ? false
-    : true;
   let agentInstruction = env.AIONIS_AIFS_AGENT_INSTRUCTION !== "0" && env.AIONIS_AIFS_AGENT_INSTRUCTION !== "false";
   let snapshot = env.AIONIS_AIFS_SNAPSHOT === "1" || env.AIONIS_AIFS_SNAPSHOT === "true";
   let snapshotSet = env.AIONIS_AIFS_SNAPSHOT !== undefined;
@@ -325,17 +330,14 @@ export function parseAionisAifsArgs(
       index += 1;
       continue;
     }
-    if (arg === "--max-prompt-chars") {
-      maxPromptChars = optionalPositiveInteger(readFlagValue(positional, index, arg), arg);
+    if (arg === "--prompt-format") {
+      promptFormat = parsePromptFormat(readFlagValue(positional, index, arg));
       index += 1;
       continue;
     }
-    if (arg === "--include-base-prompt") {
-      includeBasePrompt = true;
-      continue;
-    }
-    if (arg === "--no-include-base-prompt") {
-      includeBasePrompt = false;
+    if (arg === "--max-prompt-chars") {
+      maxPromptChars = optionalPositiveInteger(readFlagValue(positional, index, arg), arg);
+      index += 1;
       continue;
     }
     if (arg === "--agent-instruction") {
@@ -385,7 +387,7 @@ export function parseAionisAifsArgs(
     context_mode: contextMode,
     budget_profile: budgetProfile,
     max_prompt_chars: maxPromptChars,
-    include_base_prompt: includeBasePrompt,
+    prompt_format: promptFormat,
     agent_instruction: agentInstruction,
     snapshot,
     output_format: outputFormat,
@@ -587,7 +589,7 @@ async function fetchAgentContext(
     task,
     budget_profile: options.budget_profile,
     max_prompt_chars: options.max_prompt_chars,
-    include_base_prompt: options.include_base_prompt,
+    prompt_format: options.prompt_format,
   };
 
   if (options.run_id && options.task_signature) {

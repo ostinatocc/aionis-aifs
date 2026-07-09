@@ -92,8 +92,8 @@ Useful options:
 | `--role <agent|planner|worker|verifier|reviewer>` | Execution role for guideForRole. |
 | `--context-mode <standard|compact_agent>` | Runtime context rendering mode. Defaults to Runtime standard AgentContext. |
 | `--budget-profile <compact|balanced|high_recall>` | SDK execution prompt budget profile. Defaults to `balanced`. |
+| `--prompt-format <contract|runtime_compact>` | Agent prompt format. `contract` emits the SDK execution contract; `runtime_compact` emits Runtime `agent_context.prompt_text`. |
 | `--max-prompt-chars <n>` | Maximum generated `guide.md` size. |
-| `--include-base-prompt` / `--no-include-base-prompt` | Include or omit the lower-level Runtime guide text under the SDK AgentContext renderer. |
 | `--agent-instruction` / `--no-agent-instruction` | Write or omit `.aionis/AGENT_INSTRUCTIONS.md`. Enabled by default. |
 
 Refresh summary:

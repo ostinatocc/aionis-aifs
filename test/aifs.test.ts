@@ -33,7 +33,7 @@ function baseOptions(overrides: Partial<AionisAifsOptions> = {}): AionisAifsOpti
     mode: "full_power",
     context_mode: undefined,
     budget_profile: "balanced",
-    include_base_prompt: true,
+    prompt_format: "contract",
     agent_instruction: true,
     snapshot: true,
     output_format: "summary",
@@ -219,6 +219,8 @@ test("@aionis/aifs parses refresh args and env defaults", () => {
     "reviewer",
     "--budget-profile",
     "compact",
+    "--prompt-format",
+    "runtime_compact",
     "--no-agent-instruction",
     "--no-snapshot",
   ], {
@@ -233,6 +235,7 @@ test("@aionis/aifs parses refresh args and env defaults", () => {
   assert.equal(options.task_signature, "checkout");
   assert.equal(options.role, "reviewer");
   assert.equal(options.budget_profile, "compact");
+  assert.equal(options.prompt_format, "runtime_compact");
   assert.equal(options.agent_instruction, false);
   assert.equal(options.snapshot, false);
   assert.equal(options.output_format, "summary");
@@ -288,7 +291,7 @@ test("@aionis/aifs builds governed file mirror from execution guide", async () =
   const rehydrate = built.files.find((file) => file.relativePath === "rehydrate_needed.md")?.content ?? "";
 
   assert.match(guide, /AIONIS_EXECUTION_AGENT_CONTEXT v1/);
-  assert.match(guide, /BASE_AIONIS_CONTEXT/);
+  assert.doesNotMatch(guide, /BASE_AIONIS_CONTEXT/);
   assert.match(instructions, /Aionis Agent Instructions/);
   assert.match(instructions, /current_active_path\.md/);
   assert.match(instructions, /do_not_use\.md/);
